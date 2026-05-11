@@ -1,45 +1,64 @@
-# [Project name]
+# Research Outreach UI
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+A single-page web app for managing Arjun Vaidun's SoCal PI research outreach pipeline. Click **Run Agent** to discover PIs, draft emails with Claude, then review/edit/track each lead.
 
 ## Run & Operate
 
-- `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000)
-- `pnpm run typecheck` — full typecheck across all packages
-- `pnpm run build` — typecheck + build all packages
-- `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
-- `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- Required env: `DATABASE_URL` — Postgres connection string
+- `python3 artifacts/outreach-ui/flask/app.py` — run the Flask app (port from $PORT)
+- The app is served via the `artifacts/outreach-ui: web` workflow at `/`
 
 ## Stack
 
-- pnpm workspaces, Node.js 24, TypeScript 5.9
-- API: Express 5
-- DB: PostgreSQL + Drizzle ORM
-- Validation: Zod (`zod/v4`), `drizzle-zod`
-- API codegen: Orval (from OpenAPI spec)
-- Build: esbuild (CJS bundle)
+- Python 3.11 + Flask (web server + API)
+- SQLite (persistent lead storage at `artifacts/outreach-ui/flask/data/outreach.db`)
+- Plain HTML/CSS/JS frontend (no build step — served as Jinja2 template)
+- Anthropic Claude API (email drafting in the agent)
+- SerpAPI (PI discovery; runs in mock mode if key is absent)
 
 ## Where things live
 
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
+- `artifacts/outreach-ui/flask/app.py` — Flask app + API routes
+- `artifacts/outreach-ui/flask/templates/index.html` — single-page UI
+- `artifacts/outreach-ui/flask/agent/research_outreach_agent.py` — outreach agent
+- `artifacts/outreach-ui/flask/data/outreach.db` — SQLite DB (created on first run)
+- `artifacts/outreach-ui/flask/data/drafts.csv` — CSV export (written each run)
+
+## API routes (Flask, no `/api` prefix — that path routes to the Node.js server)
+
+- `GET /leads` — list all leads
+- `PATCH /leads/<id>` — update a lead (status, email body, subject, etc.)
+- `DELETE /leads/<id>` — delete a lead
+- `POST /agent/run` — start the agent in a background thread
+- `GET /agent/status` — poll agent running state + log tail
+- `GET /stats` — counts by status
 
 ## Architecture decisions
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
+- Flask serves both the HTML page and JSON API — no separate frontend build needed.
+- Routes avoid the `/api` prefix to prevent conflicts with the Node.js API server at `/api`.
+- The outreach agent runs in a background thread; the UI polls `/agent/status` every 900ms.
+- SQLite is used instead of PostgreSQL — the data is local/personal-use only, no multi-user concurrency needed.
+- DB path and drafts path are injected via env vars (`DB_FILE`, `DRAFTS_FILE`) so the agent can be run standalone or from the Flask process.
 
 ## Product
 
-_Describe the high-level user-facing capabilities of this app once they exist._
+- **Header**: Run Agent button + Show/Hide log toggle
+- **Stats bar**: Total / New / Reviewed / Sent / Responded counts
+- **Filter toolbar**: click to filter by status; free-text search on name/institution/focus
+- **Table**: all leads sorted newest-first; click any row to open the detail drawer
+- **Drawer**: inline editor for subject, email body, status, contact info; Copy email button; Delete
 
 ## User preferences
 
-_Populate as you build — explicit user instructions worth remembering across sessions._
+- Keep it simple — single-page Flask app, no auth, local use only.
 
 ## Gotchas
 
-_Populate as you build — sharp edges, "always run X before Y" rules._
+- Flask routes must NOT use `/api` prefix — that path is claimed by the Node.js API server proxy.
+- The agent uses `claude-sonnet-4-20250514` — update the model string in the agent script if needed.
+- Run the agent 2–3x/week max to avoid spamming the same PIs (SQLite deduplication handles this).
 
 ## Pointers
 
-- See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details
+- See the `pnpm-workspace` skill for workspace structure details
+- Agent script: original was in `attached_assets/research_outreach_agent.py`

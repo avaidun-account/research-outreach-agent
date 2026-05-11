@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Research Outreach — Arjun Vaidun</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0d0f1a; --surface: #161827; --surface2: #1e2135;
+      --border: #272a40; --accent: #6c8aff; --accent-dim: #2d3a6e;
+      --text: #e8eaf6; --muted: #7a84a8;
+      --green: #4caf82; --yellow: #f0c060; --purple: #b57bee; --red: #e06c75;
+      --r: 7px;
+    }
+    body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; font-size: 14px; }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    /* HEADER */
+    header { display: flex; align-items: center; justify-content: space-between; padding: 16px 24px; border-bottom: 1px solid var(--border); background: var(--surface); gap: 12px; }
+    .logo { font-size: 1rem; font-weight: 700; letter-spacing: -.02em; }
+    .logo span { color: var(--muted); font-weight: 400; font-size: .85rem; margin-left: 8px; }
+    .hdr-right { display: flex; gap: 8px; align-items: center; }
+
+    /* STATS */
+    .stats { display: flex; gap: 10px; padding: 12px 24px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+    .stat { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); padding: 7px 14px; display: flex; align-items: baseline; gap: 6px; }
+    .stat-n { font-size: 1.15rem; font-weight: 700; }
+    .stat-l { font-size: .68rem; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+
+    /* TOOLBAR */
+    .toolbar { display: flex; align-items: center; gap: 8px; padding: 10px 24px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+    .fbtn { padding: 4px 13px; border-radius: 20px; font-size: .75rem; cursor: pointer; border: 1px solid var(--border); background: transparent; color: var(--muted); transition: all .12s; }
+    .fbtn.on { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+    .fbtn:hover:not(.on) { border-color: var(--accent); color: var(--text); }
+    #search { margin-left: auto; padding: 6px 11px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); color: var(--text); font-size: .82rem; width: 210px; outline: none; }
+    #search:focus { border-color: var(--accent); }
+
+    /* TABLE */
+    .wrap { overflow-x: auto; padding: 0 24px 48px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 16px; }
+    thead th { text-align: left; padding: 8px 11px; color: var(--muted); font-size: .68rem; text-transform: uppercase; letter-spacing: .07em; border-bottom: 1px solid var(--border); font-weight: 600; white-space: nowrap; }
+    tbody tr { border-bottom: 1px solid var(--border); cursor: pointer; transition: background .1s; }
+    tbody tr:hover { background: var(--surface2); }
+    tbody tr.sel { background: var(--surface2); box-shadow: inset 2px 0 0 var(--accent); }
+    td { padding: 10px 11px; vertical-align: middle; }
+    .td-name { font-weight: 600; white-space: nowrap; }
+    .td-inst, .td-focus { color: var(--muted); font-size: .8rem; }
+    .td-date { color: var(--muted); font-size: .75rem; white-space: nowrap; }
+    .badge { display: inline-block; padding: 2px 9px; border-radius: 12px; font-size: .68rem; font-weight: 700; letter-spacing: .03em; white-space: nowrap; }
+    .b-New      { background: rgba(108,138,255,.14); color: var(--accent); border: 1px solid rgba(108,138,255,.3); }
+    .b-Reviewed { background: rgba(240,192,96,.12); color: var(--yellow); border: 1px solid rgba(240,192,96,.3); }
+    .b-Sent     { background: rgba(76,175,130,.12); color: var(--green); border: 1px solid rgba(76,175,130,.3); }
+    .b-Responded{ background: rgba(181,123,238,.14); color: var(--purple); border: 1px solid rgba(181,123,238,.3); }
+    .b-Archived { background: rgba(255,255,255,.05); color: var(--muted); border: 1px solid var(--border); }
+
+    /* EMPTY */
+    .empty { text-align: center; padding: 72px 20px; color: var(--muted); }
+    .empty h3 { color: var(--text); margin-bottom: 6px; font-size: 1rem; }
+
+    /* BUTTONS */
+    .btn { padding: 7px 15px; border-radius: var(--r); font-size: .8rem; font-weight: 600; cursor: pointer; border: none; display: inline-flex; align-items: center; gap: 6px; transition: all .12s; }
+    .btn-p { background: var(--accent); color: #fff; }
+    .btn-p:hover { background: #7d9aff; }
+    .btn-p:disabled { opacity: .45; cursor: not-allowed; }
+    .btn-g { background: transparent; color: var(--muted); border: 1px solid var(--border); }
+    .btn-g:hover { color: var(--text); border-color: var(--muted); }
+    .btn-d { background: transparent; color: var(--red); border: 1px solid rgba(224,108,117,.3); }
+    .btn-d:hover { background: rgba(224,108,117,.1); }
+
+    /* LOG */
+    #logWrap { padding: 0 24px; margin-top: 10px; display: none; }
+    .log { background: var(--bg); border: 1px solid var(--border); border-radius: var(--r); padding: 10px 12px; font-family: 'Fira Mono', monospace; font-size: .73rem; color: var(--muted); max-height: 220px; overflow-y: auto; line-height: 1.65; }
+    .ll { white-space: pre-wrap; }
+    .ok { color: var(--green); } .err { color: var(--red); } .inf { color: var(--accent); }
+    .spin { display: inline-block; width: 11px; height: 11px; border: 2px solid rgba(255,255,255,.2); border-top-color: #fff; border-radius: 50%; animation: sp .55s linear infinite; }
+    @keyframes sp { to { transform: rotate(360deg); } }
+
+    /* DRAWER */
+    .ov { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 100; backdrop-filter: blur(2px); }
+    .ov.open { display: block; }
+    .drawer { position: fixed; right: 0; top: 0; bottom: 0; width: 540px; max-width: 96vw; background: var(--surface); border-left: 1px solid var(--border); z-index: 101; display: flex; flex-direction: column; transform: translateX(100%); transition: transform .2s ease; }
+    .drawer.open { transform: translateX(0); }
+    .dh { padding: 18px 22px 14px; border-bottom: 1px solid var(--border); display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+    .dh h2 { font-size: .95rem; font-weight: 700; }
+    .dh p { font-size: .75rem; color: var(--muted); margin-top: 2px; }
+    .db { flex: 1; overflow-y: auto; padding: 18px 22px; display: flex; flex-direction: column; gap: 14px; }
+    .df { padding: 14px 22px; border-top: 1px solid var(--border); display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    .xbtn { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 1.1rem; padding: 2px 4px; }
+    .xbtn:hover { color: var(--text); }
+    label { font-size: .68rem; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; display: block; margin-bottom: 4px; }
+    input[type=text], input[type=email], select, textarea { width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: var(--r); color: var(--text); font-size: .83rem; padding: 7px 10px; outline: none; font-family: inherit; transition: border-color .12s; }
+    input[type=text]:focus, input[type=email]:focus, select:focus, textarea:focus { border-color: var(--accent); }
+    select option { background: var(--surface2); }
+    textarea { resize: vertical; line-height: 1.55; min-height: 190px; }
+    .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+    /* TOAST */
+    .toast { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%); background: var(--green); color: #fff; padding: 8px 18px; border-radius: 20px; font-size: .8rem; font-weight: 600; opacity: 0; transition: opacity .18s; pointer-events: none; z-index: 300; }
+    .toast.show { opacity: 1; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">Research Outreach <span>Arjun Vaidun · SoCal PI pipeline</span></div>
+  <div class="hdr-right">
+    <button class="btn btn-g" onclick="toggleLog()" id="logBtn">Show log</button>
+    <button class="btn btn-p" id="runBtn" onclick="runAgent()"><span id="runIco">▶</span> Run Agent</button>
+  </div>
+</header>
+
+<div id="logWrap"><div class="log" id="log"></div></div>
+
+<div class="stats" id="stats">
+  <div class="stat"><span class="stat-n" id="sTotal">—</span><span class="stat-l">Total</span></div>
+  <div class="stat"><span class="stat-n" id="sNew" style="color:var(--accent)">—</span><span class="stat-l">New</span></div>
+  <div class="stat"><span class="stat-n" id="sReviewed" style="color:var(--yellow)">—</span><span class="stat-l">Reviewed</span></div>
+  <div class="stat"><span class="stat-n" id="sSent" style="color:var(--green)">—</span><span class="stat-l">Sent</span></div>
+  <div class="stat"><span class="stat-n" id="sResponded" style="color:var(--purple)">—</span><span class="stat-l">Responded</span></div>
+</div>
+
+<div class="toolbar">
+  <button class="fbtn on" onclick="filt('All',this)">All</button>
+  <button class="fbtn" onclick="filt('New',this)">New</button>
+  <button class="fbtn" onclick="filt('Reviewed',this)">Reviewed</button>
+  <button class="fbtn" onclick="filt('Sent',this)">Sent</button>
+  <button class="fbtn" onclick="filt('Responded',this)">Responded</button>
+  <button class="fbtn" onclick="filt('Archived',this)">Archived</button>
+  <input id="search" placeholder="Search name, institution…" oninput="render()" />
+</div>
+
+<div class="wrap">
+  <table>
+    <thead><tr>
+      <th>Name</th><th>Institution</th><th>Research Focus</th><th>Email</th><th>Status</th><th>Date</th>
+    </tr></thead>
+    <tbody id="tbody"></tbody>
+  </table>
+  <div class="empty" id="empty" style="display:none">
+    <h3>No leads yet</h3>
+    <p>Click <strong>Run Agent</strong> to discover PIs and draft outreach emails.</p>
+  </div>
+</div>
+
+<div class="ov" id="ov" onclick="close_()"></div>
+<div class="drawer" id="drawer">
+  <div class="dh">
+    <div><h2 id="dName"></h2><p id="dMeta"></p></div>
+    <button class="xbtn" onclick="close_()">✕</button>
+  </div>
+  <div class="db">
+    <div class="row2">
+      <div><label>Name</label><input type="text" id="fName"/></div>
+      <div><label>Title</label><input type="text" id="fTitle"/></div>
+    </div>
+    <div class="row2">
+      <div><label>Institution</label><input type="text" id="fInst"/></div>
+      <div><label>Email</label><input type="email" id="fEmail"/></div>
+    </div>
+    <div><label>Lab URL</label><input type="text" id="fUrl"/></div>
+    <div><label>Status</label>
+      <select id="fStatus">
+        <option>New</option><option>Reviewed</option><option>Sent</option><option>Responded</option><option>Archived</option>
+      </select>
+    </div>
+    <div><label>Subject line</label><input type="text" id="fSubj"/></div>
+    <div><label>Email body</label><textarea id="fBody" rows="13"></textarea></div>
+  </div>
+  <div class="df">
+    <button class="btn btn-p" onclick="save()">Save changes</button>
+    <button class="btn btn-g" onclick="copyEmail()">Copy email</button>
+    <button class="btn btn-d" style="margin-left:auto" onclick="del()">Delete</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+let leads = [], curFilter = 'All', curId = null, poll = null;
+
+async function load() {
+  leads = await fetch('/leads').then(r => r.json());
+  render(); loadStats();
+}
+async function loadStats() {
+  const d = await fetch('/stats').then(r => r.json());
+  document.getElementById('sTotal').textContent = d.total;
+  document.getElementById('sNew').textContent = d.by_status['New'] || 0;
+  document.getElementById('sReviewed').textContent = d.by_status['Reviewed'] || 0;
+  document.getElementById('sSent').textContent = d.by_status['Sent'] || 0;
+  document.getElementById('sResponded').textContent = d.by_status['Responded'] || 0;
+}
+
+function filt(f, el) {
+  curFilter = f;
+  document.querySelectorAll('.fbtn').forEach(b => b.classList.remove('on'));
+  el.classList.add('on'); render();
+}
+
+function render() {
+  const q = document.getElementById('search').value.toLowerCase();
+  let rows = leads;
+  if (curFilter !== 'All') rows = rows.filter(l => l.status === curFilter);
+  if (q) rows = rows.filter(l =>
+    (l.name||'').toLowerCase().includes(q) ||
+    (l.institution||'').toLowerCase().includes(q) ||
+    (l.research_focus||'').toLowerCase().includes(q)
+  );
+  const tb = document.getElementById('tbody');
+  const em = document.getElementById('empty');
+  if (!rows.length) { tb.innerHTML = ''; em.style.display = 'block'; return; }
+  em.style.display = 'none';
+  tb.innerHTML = rows.map(l => `
+    <tr onclick="open_(${l.id})" class="${curId===l.id?'sel':''}">
+      <td class="td-name">${x(l.name)}</td>
+      <td class="td-inst">${x(l.institution)}</td>
+      <td class="td-focus">${x(l.research_focus)}</td>
+      <td>${l.email && l.email!=='Unknown'
+        ? `<a href="mailto:${x(l.email)}" onclick="event.stopPropagation()">${x(l.email)}</a>`
+        : '<span style="color:var(--muted)">Unknown</span>'}</td>
+      <td><span class="badge b-${l.status}">${l.status}</span></td>
+      <td class="td-date">${fmt(l.created_at)}</td>
+    </tr>`).join('');
+}
+
+function x(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function fmt(s) { if(!s) return '—'; const d=new Date(s); return d.toLocaleDateString('en-US',{month:'short',day:'numeric'}); }
+
+function open_(id) {
+  const l = leads.find(l => l.id === id); if (!l) return;
+  curId = id;
+  document.getElementById('dName').textContent = l.name||'Unknown';
+  document.getElementById('dMeta').textContent = [l.title,l.institution].filter(Boolean).join(' · ');
+  document.getElementById('fName').value  = l.name||'';
+  document.getElementById('fTitle').value = l.title||'';
+  document.getElementById('fInst').value  = l.institution||'';
+  document.getElementById('fEmail').value = l.email||'';
+  document.getElementById('fUrl').value   = l.lab_url||'';
+  document.getElementById('fStatus').value= l.status||'New';
+  document.getElementById('fSubj').value  = l.subject||'';
+  document.getElementById('fBody').value  = l.email_drafted||'';
+  document.getElementById('drawer').classList.add('open');
+  document.getElementById('ov').classList.add('open');
+  render();
+}
+function close_() {
+  curId = null;
+  document.getElementById('drawer').classList.remove('open');
+  document.getElementById('ov').classList.remove('open');
+  render();
+}
+
+async function save() {
+  if (!curId) return;
+  const p = {
+    name:          document.getElementById('fName').value,
+    title:         document.getElementById('fTitle').value,
+    institution:   document.getElementById('fInst').value,
+    email:         document.getElementById('fEmail').value,
+    lab_url:       document.getElementById('fUrl').value,
+    status:        document.getElementById('fStatus').value,
+    subject:       document.getElementById('fSubj').value,
+    email_drafted: document.getElementById('fBody').value,
+  };
+  await fetch(`/leads/${curId}`, { method:'PATCH', headers:{'Content-Type':'application/json'}, body:JSON.stringify(p) });
+  const i = leads.findIndex(l => l.id === curId);
+  if (i !== -1) leads[i] = {...leads[i], ...p};
+  document.getElementById('dName').textContent = p.name||'Unknown';
+  document.getElementById('dMeta').textContent = [p.title,p.institution].filter(Boolean).join(' · ');
+  render(); loadStats(); toast('Saved');
+}
+async function del() {
+  if (!curId || !confirm('Delete this lead?')) return;
+  await fetch(`/leads/${curId}`, {method:'DELETE'});
+  leads = leads.filter(l => l.id !== curId);
+  close_(); loadStats();
+}
+function copyEmail() {
+  const t = `Subject: ${document.getElementById('fSubj').value}\n\n${document.getElementById('fBody').value}`;
+  navigator.clipboard.writeText(t).then(() => toast('Copied!'));
+}
+
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg; el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 1700);
+}
+
+async function runAgent() {
+  const btn = document.getElementById('runBtn');
+  const ico = document.getElementById('runIco');
+  btn.disabled = true; ico.innerHTML = '<span class="spin"></span>';
+  document.getElementById('logWrap').style.display = 'block';
+  document.getElementById('logBtn').textContent = 'Hide log';
+  document.getElementById('log').innerHTML = '';
+  const res = await fetch('/agent/run', {method:'POST'});
+  if (!res.ok) {
+    const e = await res.json();
+    addLog(`[!] ${e.error}`, 'err');
+    btn.disabled = false; ico.innerHTML = '▶'; return;
+  }
+  poll = setInterval(pollAgent, 900);
+}
+
+async function pollAgent() {
+  const d = await fetch('/agent/status').then(r => r.json());
+  const logEl = document.getElementById('log');
+  logEl.innerHTML = (d.log||[]).map(l => {
+    let c = 'll';
+    if (l.includes('✓')) c += ' ok';
+    else if (l.includes('[!]') || l.includes('[ERROR]')) c += ' err';
+    else if (l.startsWith('→') || l.startsWith('===') || l.startsWith('  Done')) c += ' inf';
+    return `<div class="${c}">${x(l)}</div>`;
+  }).join('');
+  logEl.scrollTop = logEl.scrollHeight;
+  if (!d.running) {
+    clearInterval(poll); poll = null;
+    document.getElementById('runBtn').disabled = false;
+    document.getElementById('runIco').innerHTML = '▶';
+    await load();
+    addLog('── Run complete ──', 'inf');
+  }
+}
+function addLog(msg, cls) {
+  const el = document.getElementById('log');
+  el.innerHTML += `<div class="ll ${cls||''}">${x(msg)}</div>`;
+  el.scrollTop = el.scrollHeight;
+}
+function toggleLog() {
+  const w = document.getElementById('logWrap');
+  const b = document.getElementById('logBtn');
+  const v = w.style.display !== 'none';
+  w.style.display = v ? 'none' : 'block';
+  b.textContent = v ? 'Show log' : 'Hide log';
+}
+
+load();
+</script>
+</body>
+</html>

@@ -1,0 +1,21 @@
+kind = "web"
+previewPath = "/"
+title = "Research Outreach"
+version = "1.0.0"
+id = "artifacts/outreach-ui"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 24585
+
+[services.development]
+run = "python3 /home/runner/workspace/artifacts/outreach-ui/flask/app.py"
+
+[services.env]
+PORT = "24585"
