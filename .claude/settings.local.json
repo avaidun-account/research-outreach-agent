@@ -1,0 +1,18 @@
+{
+  "env": {
+    "GEMINI_API_KEY": "AIzaSyCJuLz2I4HQrCmcAKpD9qEPOeF2ogWbWec"
+  },
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:psychology.ucr.edu)",
+      "WebFetch(domain:www.ucr.edu)",
+      "WebFetch(domain:profiles.ucr.edu)",
+      "Bash(uv pip *)",
+      "Bash(python3 *)",
+      "Bash(pnpm approve-builds *)",
+      "Bash(pnpm *)",
+      "Bash(curl -s --max-time 2 \"http://localhost:8080/agent/status\")",
+      "Bash(curl -s --max-time 2 \"http://localhost:8080/status\")"
+    ]
+  }
+}

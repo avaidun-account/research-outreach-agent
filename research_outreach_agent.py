@@ -1,23 +1,23 @@
 """
 Research Outreach Agent — Arjun Vaidun
 Scrapes faculty directories from SoCal institutions (no API needed),
-filters by research relevance, and drafts personalized cold emails via Claude.
+filters by research relevance, and drafts personalized cold emails via Gemini.
 
 Run:  python research_outreach_agent.py
 Output: drafts.csv  — review before sending anything
 
-Requirements: pip install anthropic requests beautifulsoup4
+Requirements: pip install google-generativeai requests beautifulsoup4
 """
 
 import os, csv, json, time, random, sqlite3, re
 import requests
 from bs4 import BeautifulSoup
 from datetime import datetime
-from anthropic import Anthropic
+import google.generativeai as genai
 
 # ── CONFIG ────────────────────────────────────────────────────────────────────
 
-ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 
 YOUR_NAME = "Arjun Vaidun"
 YOUR_EMAIL = "a.vaidun@gmail.com"
@@ -76,7 +76,7 @@ DIRECTORIES = [
     ("USC", "https://dornsife.usc.edu/psyc/faculty/"),
     ("USC", "https://dornsife.usc.edu/psyc/brain-and-cognitive-science-faculty/"),
     ("USC", "https://dornsife.usc.edu/psyc/clinical-faculty/"),
-    ("UC Riverside", "https://psych.ucr.edu/faculty/"),
+    ("UC Riverside", "https://psychology.ucr.edu/professors"),
     ("Salk Institute", "https://www.salk.edu/scientists/laboratories/"),
     (
         "City of Hope",
@@ -222,7 +222,7 @@ def scrape_profile(profile_url):
 
 # ── AI EMAIL DRAFTING ─────────────────────────────────────────────────────────
 
-client = Anthropic()
+genai.configure(api_key=GEMINI_API_KEY)
 
 SYSTEM_PROMPT = f"""You are a research outreach assistant helping {YOUR_NAME}, a {YOUR_YEAR} Psychology major at {YOUR_SCHOOL}, find summer research and internship opportunities.
 
@@ -272,18 +272,17 @@ Profile content: {profile_text[:800] if profile_text else "Not available"}
 Extract this faculty member's info and draft Arjun's cold email."""
 
     try:
-        resp = client.messages.create(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=900,
-            system=SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": user_msg}],
+        model = genai.GenerativeModel(
+            model_name="gemini-1.5-flash",
+            system_instruction=SYSTEM_PROMPT,
         )
-        raw = resp.content[0].text.strip()
+        resp = model.generate_content(user_msg)
+        raw = resp.text.strip()
         if raw.startswith("```"):
             raw = raw.split("```")[1]
             if raw.startswith("json"):
                 raw = raw[4:]
-            return json.loads(raw.strip())
+        return json.loads(raw.strip())
     except (json.JSONDecodeError, Exception) as e:
         print(f"    [!] Draft error: {e}")
         return None
