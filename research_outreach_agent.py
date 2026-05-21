@@ -13,7 +13,8 @@ import os, csv, json, time, random, sqlite3, re
 import requests
 from bs4 import BeautifulSoup
 from datetime import datetime
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 
 # ── CONFIG ────────────────────────────────────────────────────────────────────
 
@@ -222,7 +223,7 @@ def scrape_profile(profile_url):
 
 # ── AI EMAIL DRAFTING ─────────────────────────────────────────────────────────
 
-genai.configure(api_key=GEMINI_API_KEY)
+_genai_client = genai.Client(api_key=GEMINI_API_KEY)
 
 SYSTEM_PROMPT = f"""You are a research outreach assistant helping {YOUR_NAME}, a {YOUR_YEAR} Psychology major at {YOUR_SCHOOL}, find summer research and internship opportunities.
 
@@ -272,11 +273,11 @@ Profile content: {profile_text[:800] if profile_text else "Not available"}
 Extract this faculty member's info and draft Arjun's cold email."""
 
     try:
-        model = genai.GenerativeModel(
-            model_name="gemini-1.5-flash",
-            system_instruction=SYSTEM_PROMPT,
+        resp = _genai_client.models.generate_content(
+            model="gemini-2.0-flash",
+            contents=user_msg,
+            config=types.GenerateContentConfig(system_instruction=SYSTEM_PROMPT),
         )
-        resp = model.generate_content(user_msg)
         raw = resp.text.strip()
         if raw.startswith("```"):
             raw = raw.split("```")[1]
@@ -318,7 +319,7 @@ def append_row(d):
 
 def run():
     print(f"\n{'=' * 60}")
-    print(f"  Research Outreach Agent — {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+    print(f"  Research Outreach Agent - {datetime.now().strftime('%Y-%m-%d %H:%M')}")
     print(f"  Limit: {DAILY_LIMIT} drafts | Output: {DRAFTS_FILE}")
     print(f"{'=' * 60}\n")
 
@@ -334,7 +335,7 @@ def run():
         if total >= DAILY_LIMIT:
             break
 
-        print(f"\n→ {institution}")
+        print(f"\n-> {institution}")
         entries = scrape_directory(institution, url)
         random.shuffle(entries)
 
@@ -370,7 +371,7 @@ def run():
                 continue
 
             if already_exists(conn, name, institution):
-                print(f"  ↳ Skip (exists): {name}")
+                print(f"  ~ Skip (exists): {name}")
                 continue
 
             body = result.get("body", "")
@@ -394,7 +395,7 @@ def run():
             save_lead(conn, db_row)
             append_row({**db_row, "body": full_body, "status": "REVIEW NEEDED"})
 
-            print(f"  ✓ {name} ({result.get('research_focus', '')})")
+            print(f"  + {name} ({result.get('research_focus', '')})")
             print(f"    Subj: {result.get('subject', '')}")
             if result.get("email", "Unknown") != "Unknown":
                 print(f"    Email: {result['email']}")
@@ -403,7 +404,7 @@ def run():
 
     conn.close()
     print(f"\n{'=' * 60}")
-    print(f"  {total} drafts → {DRAFTS_FILE}")
+    print(f"  {total} drafts -> {DRAFTS_FILE}")
     print(f"  Review every email before sending.")
     print(f"{'=' * 60}\n")
 

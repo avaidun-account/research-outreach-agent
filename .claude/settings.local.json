@@ -12,7 +12,14 @@
       "Bash(pnpm approve-builds *)",
       "Bash(pnpm *)",
       "Bash(curl -s --max-time 2 \"http://localhost:8080/agent/status\")",
-      "Bash(curl -s --max-time 2 \"http://localhost:8080/status\")"
+      "Bash(curl -s --max-time 2 \"http://localhost:8080/status\")",
+      "Bash(pip install *)",
+      "PowerShell(pip install *)",
+      "PowerShell(python -c \"import flask; print\\('flask:', flask.__version__\\)\" 2>&1; python -c \"import google.generativeai; print\\('google-generativeai: ok'\\)\" 2>&1; python -c \"import requests; print\\('requests:', requests.__version__\\)\" 2>&1; python -c \"import bs4; print\\('beautifulsoup4:', bs4.__version__\\)\" 2>&1)",
+      "PowerShell(Get-ChildItem \"C:\\\\Users\\\\15105\" -Recurse -ErrorAction SilentlyContinue | Where-Object { !$_.PSIsContainer -and $_.Length -gt 50MB } | Sort-Object Length -Descending | Select-Object -First 15 FullName, @{n='MB';e={[math]::Round\\($_.Length/1MB,1\\)}} | Format-Table -AutoSize)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git push *)"
     ]
   }
 }
