@@ -1,153 +1,114 @@
-"""
-Research Outreach Agent — Arjun Vaidun
-Finds research/internship opportunities at SoCal institutions,
-scrapes PI/contact info, and drafts personalized cold emails.
-Run: python research_outreach_agent.py
-Output: drafts.csv (review before sending)
-"""
-
-import os
-import csv
-import json
-import time
-import random
-import sqlite3
+import os, csv, json, time, random, sqlite3, re
 import requests
+from bs4 import BeautifulSoup
 from datetime import datetime
 from anthropic import Anthropic
 
-# ── CONFIG ────────────────────────────────────────────────────────────────────
-
-SERPAPI_KEY = os.environ.get("SERPAPI_KEY", "")   # set in .env or Replit secrets
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
-
-YOUR_NAME = "Arjun Vaidun"
-YOUR_EMAIL = "a.vaidun@gmail.com"
-YOUR_SCHOOL = "UC Riverside"
-YOUR_YEAR = "sophomore"
-YOUR_MAJOR = "Psychology"
+YOUR_NAME     = "Arjun Vaidun"
+YOUR_EMAIL    = "a.vaidun@gmail.com"
+YOUR_SCHOOL   = "UC Riverside"
+YOUR_YEAR     = "sophomore"
+YOUR_MAJOR    = "Psychology"
 PORTFOLIO_URL = "https://avaidun-account.github.io"
+DAILY_LIMIT   = 20
+DELAY         = (2, 5)
+DB_FILE       = "outreach.db"
+DRAFTS_FILE = "/home/runner/workspace/artifacts/outreach-ui/flask/data/drafts.csv"
 
-# Alternate between focus areas each run
-FOCUS_AREAS = [
-    "psychology neuroscience research lab",
-    "health technology AI healthcare research",
-    "cognitive behavioral neurology research",
-    "AI bias healthcare equity research",
-    "computational psychiatry mental health AI",
-    "neurological disorders Parkinson TBI research",
+RELEVANCE_KEYWORDS = [
+    "neuroscience","neurology","neurological","cognitive","parkinson",
+    "traumatic brain","tbi","concussion","alzheimer","dementia",
+    "brain","neural","fmri","neuroimaging","health","clinical",
+    "behavioral","psychiatry","mental health","artificial intelligence",
+    "machine learning","computational","ai","bias","equity",
+    "health disparities","health technology","decision making",
+    "aging","pediatric","developmental","social neuroscience",
 ]
 
-# All SoCal institutions — broad net
-TARGET_INSTITUTIONS = [
-    # UC System
-    "UCLA", "UC San Diego", "UC Irvine", "UC Riverside", "UC Santa Barbara",
-    # Private universities
-    "USC University of Southern California", "Caltech", "LMU Loyola Marymount",
-    "Pepperdine University", "Chapman University", "Claremont McKenna",
-    # CSU System
-    "Cal State Long Beach", "Cal State Fullerton", "Cal State LA", "San Diego State",
-    # Hospitals & medical centers
-    "Cedars-Sinai Medical Center", "Children's Hospital Los Angeles",
-    "Scripps Research Institute", "Salk Institute", "Rady Children's Hospital",
-    "UCLA Medical Center", "UCSD Health", "Hoag Hospital", "Providence Saint Joseph",
-    # Biotech / research orgs
-    "J. Craig Venter Institute San Diego", "Sanford Burnham Prebys",
-    "City of Hope National Medical Center", "Kaiser Permanente Southern California",
+DIRECTORIES = [
+    ("UCLA",         "https://www.psych.ucla.edu/faculty/"),
+    ("UCLA",         "https://www.psych.ucla.edu/directory/all/"),
+    ("UC San Diego", "https://psychology.ucsd.edu/people/faculty.html"),
+    ("USC",          "https://dornsife.usc.edu/psyc/faculty/"),
+    ("USC",          "https://dornsife.usc.edu/psyc/brain-and-cognitive-science-faculty/"),
+    ("USC",          "https://dornsife.usc.edu/psyc/clinical-faculty/"),
+    ("UCI", "https://www.faculty.uci.edu/profile.cfm?search_type=dept&dept=Psychological+Science"),
 ]
 
-DAILY_LIMIT = 15          # max leads per run
-DELAY_BETWEEN = (2, 4)    # seconds between API calls (be polite)
-DB_FILE = os.environ.get("DB_FILE", "outreach.db")
-DRAFTS_FILE = os.environ.get("DRAFTS_FILE", "drafts.csv")
-
-# ── DATABASE ──────────────────────────────────────────────────────────────────
+HEADERS = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36"}
 
 def init_db():
     conn = sqlite3.connect(DB_FILE)
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS leads (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT,
-            title TEXT,
-            institution TEXT,
-            email TEXT,
-            lab_url TEXT,
-            research_focus TEXT,
-            subject TEXT,
-            email_drafted TEXT,
-            status TEXT DEFAULT 'New',
-            created_at TEXT
-        )
-    """)
+    conn.execute("""CREATE TABLE IF NOT EXISTS leads (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT, title TEXT, institution TEXT,
+        email TEXT, profile_url TEXT, research_focus TEXT,
+        subject TEXT, email_body TEXT,
+        status TEXT DEFAULT 'drafted', created_at TEXT)""")
     conn.commit()
     return conn
 
+def already_exists(conn, name, institution):
+    return conn.execute("SELECT id FROM leads WHERE name=? AND institution=?", (name, institution)).fetchone() is not None
 
-def already_contacted(conn, name, institution):
-    row = conn.execute(
-        "SELECT id FROM leads WHERE name=? AND institution=?",
-        (name, institution)
-    ).fetchone()
-    return row is not None
-
-
-def save_lead(conn, lead: dict):
-    conn.execute("""
-        INSERT INTO leads (name, title, institution, email, lab_url,
-                           research_focus, subject, email_drafted, status, created_at)
-        VALUES (:name, :title, :institution, :email, :lab_url,
-                :research_focus, :subject, :email_drafted, 'New', :created_at)
-    """, lead)
+def save_lead(conn, d):
+    conn.execute("""INSERT INTO leads (name,title,institution,email,profile_url,research_focus,subject,email_body,status,created_at)
+        VALUES (:name,:title,:institution,:email,:profile_url,:research_focus,:subject,:email_body,'drafted',:created_at)""", d)
     conn.commit()
 
-# ── SEARCH ────────────────────────────────────────────────────────────────────
-
-def search_leads(focus: str, institution: str) -> list[dict]:
-    """Use SerpAPI to find lab pages, faculty profiles, and research opportunities."""
-    if not SERPAPI_KEY:
-        print("  [!] No SERPAPI_KEY — using mock data for demo")
-        return _mock_leads(focus, institution)
-
-    query = f"{focus} professor lab {institution} site:edu OR site:org"
-    params = {
-        "q": query,
-        "api_key": SERPAPI_KEY,
-        "num": 5,
-        "hl": "en",
-    }
+def fetch_page(url):
     try:
-        r = requests.get("https://serpapi.com/search", params=params, timeout=10)
+        r = requests.get(url, headers=HEADERS, timeout=12)
         r.raise_for_status()
-        results = r.json().get("organic_results", [])
-        leads = []
-        for res in results:
-            leads.append({
-                "snippet": res.get("snippet", ""),
-                "url": res.get("link", ""),
-                "title_raw": res.get("title", ""),
-                "institution": institution,
-                "focus": focus,
-            })
-        return leads
+        return BeautifulSoup(r.text, "html.parser")
     except Exception as e:
-        print(f"  [!] SerpAPI error: {e}")
+        print(f"    [!] Fetch failed: {url} — {e}")
+        return None
+
+def is_relevant(text):
+    t = text.lower()
+    return any(kw in t for kw in RELEVANCE_KEYWORDS)
+
+def scrape_directory(institution, url):
+    soup = fetch_page(url)
+    if not soup:
         return []
+    base = "/".join(url.split("/")[:3])
+    raw = []
+    candidates = (soup.find_all("article") or
+                  soup.find_all(class_=re.compile(r"faculty|person|profile|member", re.I)) or
+                  soup.find_all("li", class_=re.compile(r"faculty|person|member", re.I)))
+    if candidates:
+        for el in candidates:
+            text = el.get_text(" ", strip=True)
+            if len(text) < 10:
+                continue
+            link = el.find("a", href=True)
+            profile_url = ""
+            if link:
+                href = link["href"]
+                profile_url = href if href.startswith("http") else base + "/" + href.lstrip("/")
+            raw.append({"text": text, "profile_url": profile_url, "institution": institution})
+    else:
+        for row in soup.find_all(["p", "tr", "div"]):
+            text = row.get_text(" ", strip=True)
+            if "@" in text and len(text) > 20:
+                raw.append({"text": text, "profile_url": url, "institution": institution})
+    relevant = [r for r in raw if is_relevant(r["text"])]
+    print(f"    {len(raw)} entries → {len(relevant)} relevant")
+    return relevant
 
-
-def _mock_leads(focus: str, institution: str) -> list[dict]:
-    """Mock data for testing without API keys."""
-    return [
-        {
-            "snippet": f"Dr. Jane Smith studies {focus} at {institution}. The lab is accepting undergraduate research assistants for summer 2025.",
-            "url": f"https://example.edu/{institution.lower().replace(' ','')}/smith-lab",
-            "title_raw": f"Smith Lab — {focus} — {institution}",
-            "institution": institution,
-            "focus": focus,
-        }
-    ]
-
-# ── AI EXTRACTION + EMAIL DRAFTING ────────────────────────────────────────────
+def scrape_profile(profile_url, base_url):
+    if not profile_url or profile_url == base_url:
+        return ""
+    base = "/".join(base_url.split("/")[:3])
+    if not profile_url.startswith(base):
+        return ""
+    soup = fetch_page(profile_url)
+    if not soup:
+        return ""
+    return soup.get_text(" ", strip=True)[:1500]
 
 client = Anthropic()
 
@@ -155,189 +116,109 @@ SYSTEM_PROMPT = f"""You are a research outreach assistant helping {YOUR_NAME}, a
 
 Arjun's background:
 - Psychology major at UC Riverside, strong coursework in psychology and neuroscience
-- Research interests: AI in health tech, neurological health (motivated by two family members with Parkinson's and a sibling with multiple concussions), gender bias in healthcare AI
-- Built PlateSwap — a live iOS/Android nutrition app using GPT-4o Vision (plateswap.replit.app)
+- Research interests: AI in health tech, neurological health (motivated by two family members with Parkinson's disease and a sibling with multiple concussions), gender bias in healthcare AI
+- Built PlateSwap — live iOS/Android nutrition app using GPT-4o Vision (plateswap.replit.app)
 - Built MedSpa Outreach Agent — end-to-end AI sales automation pipeline
 - Built Morning Brief Agent — daily AI briefing via GitHub Actions + Claude
-- COPE Health Scholar (hospital clinical placement, 2025)
-- Research team member at Althea Labs AI (gender bias in healthcare AI)
-- Tennis coach for neurodivergent youth (FCSN, 2+ years)
+- COPE Health Scholar (hospital clinical placement, 2025-present)
+- Research team member, Althea Labs AI (gender bias in healthcare AI)
+- Tennis coach for neurodivergent youth with autism, 2+ years
 - Stanford CASP clinical anatomy program alumnus
-- NASM CPT in progress
-- Member: AMSA, APA, Neuroscience Club
+- NASM CPT in progress, AMSA/APA/Neuroscience Club member
 - Portfolio: {PORTFOLIO_URL}
 
-Your job:
-1. Extract PI/contact info from a search snippet
-2. Draft a short, genuine cold email from Arjun to that person
+Draft a short cold email from Arjun to this faculty member.
 
-Email rules:
-- 150-200 words MAX. Professors skim. Every sentence must earn its place.
-- Open with ONE specific thing about their research — not generic flattery
-- Connect Arjun's personal motivation (family Parkinson's/concussion experience) naturally if relevant
-- Lead with PlateSwap or the AI work — it's his strongest hook
-- Ask for a specific, low-friction thing: 15-min call, or to be considered for any volunteer/paid opening
-- No groveling. Confident but not arrogant.
-- Subject line must be specific and under 10 words
-- DO NOT mention GPA
+Rules:
+- 150-200 words MAX
+- First sentence: one specific observation about THEIR research
+- Connect Parkinson/concussion motivation when research is neurological
+- Lead with PlateSwap or AI agent work as credential hook
+- Ask for ONE thing: 15-min call or any opening (volunteer or paid)
+- Tone: confident, direct — he has real shipped projects
+- Subject: specific, under 10 words, no cliches
+- Do NOT mention GPA
 
-Return ONLY valid JSON, no markdown, no preamble:
-{{
-  "name": "Dr. First Last or Unknown",
-  "title": "their title or Unknown",
-  "email": "email if found in snippet or Unknown",
-  "lab_url": "url",
-  "research_focus": "2-3 word summary of their research",
-  "subject": "email subject line",
-  "body": "full email body"
-}}"""
+Return ONLY valid JSON, nothing else:
+{{"name":"Dr. First Last","title":"their title or Unknown","email":"their email or Unknown","research_focus":"2-4 words","subject":"subject line","body":"email body only"}}"""
 
-
-def extract_and_draft(snippet: str, url: str, institution: str, focus: str) -> dict | None:
-    """Send snippet to Claude — extract contact info and draft email."""
-    user_msg = f"""Search result from {institution}:
-URL: {url}
-Snippet: {snippet}
-Research focus searched: {focus}
-
-Extract contact info and draft a cold email from Arjun."""
-
+def draft_email(raw_text, profile_text, profile_url, institution):
+    user_msg = f"Faculty info from {institution}:\nProfile URL: {profile_url}\nDirectory text: {raw_text[:800]}\nProfile content: {profile_text[:800] if profile_text else 'Not available'}\n\nExtract info and draft Arjun's cold email."
     try:
-        response = client.messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=1000,
+        resp = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=900,
             system=SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": user_msg}]
+            messages=[{"role": "user", "content": user_msg}],
         )
-        raw = response.content[0].text.strip()
-        # Strip any accidental markdown fences
+        raw = resp.content[0].text.strip()
         if raw.startswith("```"):
             raw = raw.split("```")[1]
             if raw.startswith("json"):
                 raw = raw[4:]
-        return json.loads(raw)
-    except json.JSONDecodeError as e:
-        print(f"  [!] JSON parse error: {e}")
-        return None
+        return json.loads(raw.strip())
     except Exception as e:
-        print(f"  [!] Claude error: {e}")
+        print(f"    [!] Draft error: {e}")
         return None
 
-# ── DRAFTS CSV ────────────────────────────────────────────────────────────────
+FIELDS = ["name","title","institution","email","profile_url","research_focus","subject","body","status"]
 
-def write_drafts_header():
+def write_header():
     with open(DRAFTS_FILE, "w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=[
-            "name", "title", "institution", "email", "lab_url",
-            "research_focus", "subject", "body", "status"
-        ])
-        writer.writeheader()
+        csv.DictWriter(f, fieldnames=FIELDS).writeheader()
 
-
-def append_draft(lead: dict):
+def append_row(d):
     with open(DRAFTS_FILE, "a", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=[
-            "name", "title", "institution", "email", "lab_url",
-            "research_focus", "subject", "body", "status"
-        ])
-        writer.writerow({
-            "name": lead["name"],
-            "title": lead["title"],
-            "institution": lead["institution"],
-            "email": lead["email"],
-            "lab_url": lead["lab_url"],
-            "research_focus": lead["research_focus"],
-            "subject": lead.get("subject", ""),
-            "body": lead.get("email_drafted", ""),
-            "status": "REVIEW NEEDED",
-        })
-
-# ── MAIN ──────────────────────────────────────────────────────────────────────
+        csv.DictWriter(f, fieldnames=FIELDS).writerow(d)
 
 def run():
-    print(f"\n{'='*60}")
-    print(f"  Research Outreach Agent — {datetime.now().strftime('%Y-%m-%d %H:%M')}")
-    print(f"{'='*60}\n")
-
+    print(f"\n{'='*60}\n  Research Outreach Agent — {datetime.now().strftime('%Y-%m-%d %H:%M')}\n  Limit: {DAILY_LIMIT} | Output: {DRAFTS_FILE}\n{'='*60}\n")
     conn = init_db()
-    write_drafts_header()
-
-    # Pick 3 random focus areas and 5 random institutions this run
-    focuses = random.sample(FOCUS_AREAS, 3)
-    institutions = random.sample(TARGET_INSTITUTIONS, 5)
-
+    write_header()
+    dirs = DIRECTORIES.copy()
+    random.shuffle(dirs)
     total = 0
-    new_leads = 0
-
-    for institution in institutions:
+    for institution, url in dirs:
         if total >= DAILY_LIMIT:
             break
-        for focus in focuses:
+        print(f"\n→ {institution}")
+        entries = scrape_directory(institution, url)
+        random.shuffle(entries)
+        for entry in entries:
             if total >= DAILY_LIMIT:
                 break
-
-            print(f"→ Searching: [{focus}] @ {institution}")
-            raw_leads = search_leads(focus, institution)
-
-            for raw in raw_leads:
-                if total >= DAILY_LIMIT:
-                    break
-
-                time.sleep(random.uniform(*DELAY_BETWEEN))
-
-                result = extract_and_draft(
-                    snippet=raw["snippet"],
-                    url=raw["url"],
-                    institution=institution,
-                    focus=focus,
-                )
-
-                if not result:
-                    continue
-
-                name = result.get("name", "Unknown")
-                if name == "Unknown":
-                    print(f"  ↳ Skipped — no PI identified")
-                    continue
-
-                if already_contacted(conn, name, institution):
-                    print(f"  ↳ Skipped — already in DB: {name}")
-                    continue
-
-                # Compose the email body with signature
-                body = result.get("body", "")
-                body += f"\n\nBest,\n{YOUR_NAME}\n{YOUR_SCHOOL} | {YOUR_MAJOR}\n{YOUR_EMAIL}\n{PORTFOLIO_URL}"
-
-                db_lead = {
-                    "name": name,
-                    "title": result.get("title", "Unknown"),
-                    "institution": institution,
-                    "email": result.get("email", "Unknown"),
-                    "lab_url": result.get("lab_url", raw["url"]),
-                    "research_focus": result.get("research_focus", focus),
-                    "subject": result.get("subject", ""),
-                    "email_drafted": body,
-                    "created_at": datetime.now().isoformat(),
-                }
-
-                save_lead(conn, db_lead)
-
-                draft_row = {**db_lead, "subject": result.get("subject", ""), "email_drafted": body}
-                append_draft(draft_row)
-
-                print(f"  ✓ Drafted: {name} — {result.get('research_focus','')}")
-                print(f"    Subject: {result.get('subject','')}")
-
-                new_leads += 1
-                total += 1
-
+            time.sleep(random.uniform(*DELAY))
+            profile_text = scrape_profile(entry["profile_url"], url)
+            if profile_text:
+                time.sleep(random.uniform(1, 2))
+            result = draft_email(entry["text"], profile_text, entry["profile_url"], institution)
+            if not result:
+                continue
+            name = result.get("name", "Unknown")
+            if not name or name == "Unknown":
+                continue
+            if already_exists(conn, name, institution):
+                print(f"  ↳ Skip: {name}")
+                continue
+            full_body = result.get("body","") + f"\n\nBest,\n{YOUR_NAME}\n{YOUR_SCHOOL} | {YOUR_MAJOR}\n{YOUR_EMAIL}\n{PORTFOLIO_URL}"
+            db_row = {
+                "name": name, "title": result.get("title","Unknown"),
+                "institution": institution, "email": result.get("email","Unknown"),
+                "profile_url": entry["profile_url"] or url,
+                "research_focus": result.get("research_focus",""),
+                "subject": result.get("subject",""),
+                "email_body": full_body, "created_at": datetime.now().isoformat(),
+            }
+            save_lead(conn, db_row)
+            append_row({"name":db_row["name"],"title":db_row["title"],"institution":db_row["institution"],
+                        "email":db_row["email"],"profile_url":db_row["profile_url"],
+                        "research_focus":db_row["research_focus"],"subject":db_row["subject"],
+                        "body":full_body,"status":"REVIEW NEEDED"})
+            print(f"  ✓ {name} ({result.get('research_focus','')})")
+            print(f"    Subj: {result.get('subject','')}")
+            total += 1
     conn.close()
-
-    print(f"\n{'='*60}")
-    print(f"  Done. {new_leads} new drafts → {DRAFTS_FILE}")
-    print(f"  Review drafts.csv before sending anything.")
-    print(f"{'='*60}\n")
-
+    print(f"\n{'='*60}\n  {total} drafts → {DRAFTS_FILE}\n  Review every email before sending.\n{'='*60}\n")
 
 if __name__ == "__main__":
     run()

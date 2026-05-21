@@ -73,13 +73,19 @@ DIRECTORIES = [
     ("UCLA", "https://www.psych.ucla.edu/faculty/"),
     ("UCLA", "https://www.psych.ucla.edu/directory/all/"),
     ("UC San Diego", "https://psychology.ucsd.edu/people/faculty.html"),
-    ("UC San Diego", "https://neurosciences.ucsd.edu/faculty/index.html"),
     ("USC", "https://dornsife.usc.edu/psyc/faculty/"),
     ("USC", "https://dornsife.usc.edu/psyc/brain-and-cognitive-science-faculty/"),
     ("USC", "https://dornsife.usc.edu/psyc/clinical-faculty/"),
-    ("UC Riverside", "https://psychology.ucr.edu/faculty"),
-    ("Salk Institute", "https://www.salk.edu/scientists/faculty/"),
-    ("Scripps Research", "https://www.scripps.edu/faculty/"),
+    ("UC Riverside", "https://psych.ucr.edu/faculty/"),
+    ("Salk Institute", "https://www.salk.edu/scientists/laboratories/"),
+    (
+        "City of Hope",
+        "https://www.cityofhope.org/research/beckman-research-institute/research-departments-and-divisions/neurosciences",
+    ),
+    (
+        "Cedars-Sinai",
+        "https://www.cedars-sinai.org/research/departments-institutes/neurological-sciences.html",
+    ),
 ]
 
 HEADERS = {
@@ -267,7 +273,7 @@ Extract this faculty member's info and draft Arjun's cold email."""
 
     try:
         resp = client.messages.create(
-            model="claude-sonnet-4-20250514",
+            model="claude-haiku-4-5-20251001",
             max_tokens=900,
             system=SYSTEM_PROMPT,
             messages=[{"role": "user", "content": user_msg}],
@@ -277,7 +283,7 @@ Extract this faculty member's info and draft Arjun's cold email."""
             raw = raw.split("```")[1]
             if raw.startswith("json"):
                 raw = raw[4:]
-        return json.loads(raw.strip())
+            return json.loads(raw.strip())
     except (json.JSONDecodeError, Exception) as e:
         print(f"    [!] Draft error: {e}")
         return None
@@ -340,7 +346,13 @@ def run():
             time.sleep(random.uniform(*DELAY))
 
             profile_text = ""
-            if entry["profile_url"] and entry["profile_url"] != url:
+            # Skip profile fetch if URL is on a different subdomain that may not resolve
+            same_domain = (
+                entry["profile_url"]
+                and entry["profile_url"] != url
+                and entry["profile_url"].startswith(("/".join(url.split("/")[:3])))
+            )
+            if same_domain:
                 profile_text = scrape_profile(entry["profile_url"])
                 time.sleep(random.uniform(1, 2))
 
